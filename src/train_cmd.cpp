@@ -3789,11 +3789,7 @@ static Vehicle *FindTrainOnTile(Vehicle *v, void *data)
 	return v;
 }
 
-static bool IsGridlocked(Train *t) {
-	if (t->blocked_by == nullptr)
-		return false;
-
-	Debug(misc, 0, "Determining gridlock for {}", t->index);
+static void ResetSeen() {
 	for (Vehicle *v2 : Vehicle::Iterate())
 	{
 		if (v2->type == VEH_TRAIN)
@@ -3802,6 +3798,15 @@ static bool IsGridlocked(Train *t) {
 			ClrBit(t2->flags, VRF_SEEN_TRAIN);
 		}
 	}
+}
+
+static bool IsGridlocked(Train *t) {
+	if (t->blocked_by == nullptr)
+		return false;
+
+	ResetSeen();
+
+	Debug(misc, 0, "Determining gridlock for {}", t->index);
 
 	// we're gridlocked if there's a blocking chain leading back to us
 	for (Train *t2 = t->blocked_by; t2 != nullptr; t2 = t2->blocked_by)
@@ -3830,6 +3835,34 @@ static bool IsGridlocked(Train *t) {
 	}
 
 	return false;
+}
+
+static int DoNumBlocked(Train *t)
+{
+	int num_blocked = 0;
+	for (Vehicle *v2 : Vehicle::Iterate())
+	{
+		if (v2->type == VEH_TRAIN)
+		{
+			Train *t2 = Train::From(v2);
+
+			if (HasBit(t2->flags, VRF_SEEN_TRAIN))
+				continue;
+
+			if (HasBit(t2->flags, VRF_TRAIN_STUCK) && t2->blocked_by != nullptr && t2->blocked_by->index == t->index) {
+				SetBit(t2->flags, VRF_SEEN_TRAIN);
+				num_blocked += 1 + DoNumBlocked(t2);
+			}
+		}
+	}
+
+	return num_blocked;
+}
+
+static int NumBlocked(Train *t) {
+	ResetSeen();
+	SetBit(t->flags, VRF_SEEN_TRAIN);
+	return DoNumBlocked(t);
 }
 
 static bool TrainLocoHandler(Train *v, bool mode)
@@ -3911,9 +3944,12 @@ static bool TrainLocoHandler(Train *v, bool mode)
 			if (HasBit(v->flags, VRF_TRAIN_STUCK) && v->wait_counter > 2 * _settings_game.pf.wait_for_pbs_path * DAY_TICKS) {
 				/* Show message to player. */
 				if (_settings_client.gui.lost_vehicle_warn && v->owner == _local_company) {
-					SetDParam(0, v->index);
 					// do we want to report gridlock earlier?
-					AddVehicleAdviceNewsItem(IsGridlocked(v) ? STR_NEWS_TRAIN_IS_STUCK_IN_GRIDLOCK : STR_NEWS_TRAIN_IS_STUCK, v->index);
+					bool is_gridlocked = IsGridlocked(v);
+					int num_blocked = NumBlocked(v);
+					SetDParam(0, v->index);
+					SetDParam(1, num_blocked);
+					AddVehicleAdviceNewsItem(is_gridlocked ? STR_NEWS_TRAIN_IS_STUCK_IN_GRIDLOCK : STR_NEWS_TRAIN_IS_STUCK, v->index);
 				}
 				v->wait_counter = 0;
 			}
