@@ -154,6 +154,8 @@ public:
 			target->tile = m_res_dest;
 			target->trackdir = m_res_dest_td;
 			target->okay = false;
+			target->conflict_tile = m_res_dest;
+			target->conflict_trackdir = m_res_dest_td;
 		}
 
 		/* Don't bother if the target is reserved. */

@@ -18,7 +18,7 @@
 #include "engine_base.h"
 #include "rail_map.h"
 #include "ground_vehicle.hpp"
-#include "pbs.h"
+#include "tile_type.h"
 
 struct Train;
 
@@ -92,9 +92,10 @@ struct Train FINAL : public GroundVehicle<Train, VEH_TRAIN> {
 	Train *other_multiheaded_part;
 
 	Train *blocked_by;
-	PBSTileInfo blocked_at;
+	TileIndex blocked_at;
+    Trackdir blocked_at_td;
 
-	uint16 crash_anim_pos; ///< Crash animation counter.
+    uint16 crash_anim_pos; ///< Crash animation counter.
 
 	uint16 flags;
 	TrackBits track;

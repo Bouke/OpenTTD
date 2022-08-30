@@ -27,19 +27,30 @@ struct PBSTileInfo {
 	TileIndex tile;      ///< Tile the path ends, INVALID_TILE if no valid path was found.
 	Trackdir  trackdir;  ///< The reserved trackdir on the tile.
 	bool      okay;      ///< True if tile is a safe waiting position, false otherwise.
+	TileIndex conflict_tile;
+	Trackdir conflict_trackdir;
 
 	/**
 	 * Create an empty PBSTileInfo.
 	 */
-	PBSTileInfo() : tile(INVALID_TILE), trackdir(INVALID_TRACKDIR), okay(false) {}
+	PBSTileInfo() : tile(INVALID_TILE), trackdir(INVALID_TRACKDIR), okay(false), conflict_tile(INVALID_TILE), conflict_trackdir(INVALID_TRACKDIR) {}
 
 	/**
-	 * Create a PBSTileInfo with given tile, track direction and safe waiting position information.
+	 * Create a PBSTileInfo with given tile, track direction as safe waiting position.
 	 * @param _t The tile where the path ends.
 	 * @param _td The reserved track dir on the tile.
 	 * @param _okay Whether the tile is a safe waiting point or not.
 	 */
-	PBSTileInfo(TileIndex _t, Trackdir _td, bool _okay) : tile(_t), trackdir(_td), okay(_okay) {}
+	PBSTileInfo(TileIndex _t, Trackdir _td) : tile(_t), trackdir(_td), okay(true) {}
+
+	/**
+	 * Create a PBSTileInfo with given tile, track direction as not safe waiting position.
+	 * @param _t The tile where the path ends.
+	 * @param _td The reserved track dir on the tile.
+	 * @param _ct The tile where the conflict lies.
+	 * @param _ctd The track dir on the conflicted tile.
+	 */
+	PBSTileInfo(TileIndex _t, Trackdir _td, TileIndex _ct, Trackdir _ctd) : tile(_t), trackdir(_td), okay(false), conflict_tile(_ct), conflict_trackdir(_ctd) {}
 };
 
 PBSTileInfo FollowTrainReservation(const Train *v, Vehicle **train_on_res = nullptr);

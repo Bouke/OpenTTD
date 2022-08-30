@@ -2372,7 +2372,7 @@ static PBSTileInfo ExtendTrainReservation(const Train *v, TrackBits *new_tracks,
 			/* Choice found, path valid but not okay. Save info about the choice tile as well. */
 			if (new_tracks != nullptr) *new_tracks = TrackdirBitsToTrackBits(ft.m_new_td_bits);
 			if (enterdir != nullptr) *enterdir = ft.m_exitdir;
-			return PBSTileInfo(ft.m_new_tile, ft.m_old_td, false);
+			return PBSTileInfo(ft.m_new_tile, ft.m_old_td, ft.m_new_tile, ft.m_old_td);
 		}
 
 		tile = ft.m_new_tile;
@@ -2382,7 +2382,7 @@ static PBSTileInfo ExtendTrainReservation(const Train *v, TrackBits *new_tracks,
 			bool wp_free = IsWaitingPositionFree(v, tile, cur_td, _settings_game.pf.forbid_90_deg);
 			if (!(wp_free && TryReserveRailTrack(tile, TrackdirToTrack(cur_td)))) break;
 			/* Safe position is all good, path valid and okay. */
-			return PBSTileInfo(tile, cur_td, true);
+			return PBSTileInfo(tile, cur_td);
 		}
 
 		if (!TryReserveRailTrack(tile, TrackdirToTrack(cur_td))) break;
@@ -2390,10 +2390,11 @@ static PBSTileInfo ExtendTrainReservation(const Train *v, TrackBits *new_tracks,
 
 	if (ft.m_err == CFollowTrackRail::EC_OWNER || ft.m_err == CFollowTrackRail::EC_NO_WAY) {
 		/* End of line, path valid and okay. */
-		return PBSTileInfo(ft.m_old_tile, ft.m_old_td, true);
+		return PBSTileInfo(ft.m_old_tile, ft.m_old_td);
 	}
 
 	/* Sorry, can't reserve path, back out. */
+	PBSTileInfo result = PBSTileInfo(INVALID_TILE, INVALID_TRACKDIR, ft.m_new_tile, cur_td);
 	tile = origin.tile;
 	cur_td = origin.trackdir;
 	TileIndex stopped = ft.m_old_tile;
@@ -2414,7 +2415,7 @@ static PBSTileInfo ExtendTrainReservation(const Train *v, TrackBits *new_tracks,
 	}
 
 	/* Path invalid. */
-	return PBSTileInfo();
+	return result;
 }
 
 /**
@@ -2548,14 +2549,16 @@ static Track ChooseTrainTrack(Train *v, TileIndex tile, DiagDirection enterdir, 
 		best_track = track;
 	}
 
-	PBSTileInfo   res_dest(tile, INVALID_TRACKDIR, false);
+	PBSTileInfo   res_dest(tile, INVALID_TRACKDIR, INVALID_TILE, INVALID_TRACKDIR);
 	DiagDirection dest_enterdir = enterdir;
 	if (do_track_reservation) {
 		res_dest = ExtendTrainReservation(v, &tracks, &dest_enterdir);
 		if (res_dest.tile == INVALID_TILE) {
 			/* Reservation failed? */
-			v->blocked_at = res_dest;
-			if (mark_stuck) MarkTrainAsStuck(v);
+			v->blocked_at = res_dest.conflict_tile;
+			v->blocked_at_td = res_dest.conflict_trackdir;
+			if (mark_stuck)
+				MarkTrainAsStuck(v);
 			if (changed_signal) SetSignalStateByTrackdir(tile, TrackEnterdirToTrackdir(best_track, enterdir), SIGNAL_STATE_RED);
 			return FindFirstTrack(tracks);
 		}
@@ -2618,14 +2621,19 @@ static Track ChooseTrainTrack(Train *v, TileIndex tile, DiagDirection enterdir, 
 			if (Rail90DegTurnDisallowed(GetTileRailType(ft.m_old_tile), GetTileRailType(ft.m_new_tile)))
 				ft.m_new_td_bits &= ~TrackdirCrossesTrackdirs(res_dest.trackdir);
 
-			if (HasReservedTracks(ft.m_new_tile, TrackdirBitsToTrackBits(ft.m_new_td_bits)))
-				v->blocked_at = PBSTileInfo(ft.m_new_tile, INVALID_TRACKDIR, false);
-			else
-				v->blocked_at = res_dest;
+			if (HasReservedTracks(ft.m_new_tile, TrackdirBitsToTrackBits(ft.m_new_td_bits))) {
+				v->blocked_at = ft.m_new_tile;
+				v->blocked_at_td = INVALID_TRACKDIR;
+			}
+			else {
+				v->blocked_at = res_dest.conflict_tile;
+				v->blocked_at_td = res_dest.conflict_trackdir;
+			}
 		}
 		else
 		{
-			v->blocked_at = res_dest;
+			v->blocked_at = res_dest.conflict_tile;
+			v->blocked_at_td = res_dest.conflict_trackdir;
 		}
 
 		if (mark_stuck)
@@ -2646,7 +2654,8 @@ static Track ChooseTrainTrack(Train *v, TileIndex tile, DiagDirection enterdir, 
 			if (changed_signal) MarkTileDirtyByTile(tile);
 		} else {
 			FreeTrainTrackReservation(v);
-			v->blocked_at = res_dest;
+			v->blocked_at = INVALID_TILE;
+			v->blocked_at_td = INVALID_TRACKDIR;
 			if (mark_stuck) MarkTrainAsStuck(v);
 		}
 		return best_track;
@@ -2674,7 +2683,8 @@ static Track ChooseTrainTrack(Train *v, TileIndex tile, DiagDirection enterdir, 
 				if (res_dest.okay) continue;
 				/* Path found, but could not be reserved. */
 				FreeTrainTrackReservation(v);
-				v->blocked_at = res_dest;
+				v->blocked_at = res_dest.conflict_tile;
+				v->blocked_at_td = res_dest.conflict_trackdir;
 				if (mark_stuck) MarkTrainAsStuck(v);
 				if (got_reservation != nullptr) *got_reservation = false;
 				changed_signal = false;
@@ -2684,7 +2694,8 @@ static Track ChooseTrainTrack(Train *v, TileIndex tile, DiagDirection enterdir, 
 		/* No order or no safe position found, try any position. */
 		if (!TryReserveSafeTrack(v, res_dest.tile, res_dest.trackdir, true)) {
 			FreeTrainTrackReservation(v);
-			v->blocked_at = res_dest;
+			v->blocked_at = res_dest.conflict_tile;
+			v->blocked_at_td = res_dest.conflict_trackdir;
 			if (mark_stuck) MarkTrainAsStuck(v);
 			if (got_reservation != nullptr) *got_reservation = false;
 			changed_signal = false;
@@ -2733,7 +2744,8 @@ bool TryPathReserve(Train *v, bool mark_as_stuck, bool first_tile_okay)
 	 * Exit here as doing any further reservations will probably just
 	 * make matters worse. */
 	if (other_train != nullptr && other_train->index != v->index) {
-		v->blocked_at = origin;
+		v->blocked_at = origin.conflict_tile;
+		v->blocked_at_td = origin.conflict_trackdir;
 		if (mark_as_stuck) MarkTrainAsStuck(v);
 		return false;
 	}
@@ -3876,10 +3888,11 @@ static bool TrainLocoHandler(Train *v, bool mode)
 			/* Still stuck. */
 			if (turn_around) ReverseTrainDirection(v);
 
+			// Determine which train is blocking us.
 			if (HasBit(v->flags, VRF_TRAIN_STUCK)) {
 				TrainCollideChecker tcc;
 				tcc.v = nullptr;
-				FindVehicleOnPos(v->blocked_at.tile, &tcc, FindTrainOnTile);
+				FindVehicleOnPos(v->blocked_at, &tcc, FindTrainOnTile);
 				v->blocked_by = tcc.v;
 			}
 
@@ -3887,14 +3900,8 @@ static bool TrainLocoHandler(Train *v, bool mode)
 				/* Show message to player. */
 				if (_settings_client.gui.lost_vehicle_warn && v->owner == _local_company) {
 					SetDParam(0, v->index);
-					if (IsGridlocked(v))
-					{
-						AddVehicleAdviceNewsItem(STR_NEWS_TRAIN_IS_BLOCKED_BY_ITSELF, v->index);
-					}
-					else
-					{
-						AddVehicleAdviceNewsItem(STR_NEWS_TRAIN_IS_STUCK, v->index);
-					}
+					// do we want to report gridlock earlier?
+					AddVehicleAdviceNewsItem(IsGridlocked(v) ? STR_NEWS_TRAIN_IS_STUCK_IN_GRIDLOCK : STR_NEWS_TRAIN_IS_STUCK, v->index);
 				}
 				v->wait_counter = 0;
 			}
