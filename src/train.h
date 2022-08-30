@@ -18,6 +18,7 @@
 #include "engine_base.h"
 #include "rail_map.h"
 #include "ground_vehicle.hpp"
+#include "pbs.h"
 
 struct Train;
 
@@ -31,6 +32,7 @@ enum VehicleRailFlags {
 	VRF_TOGGLE_REVERSE                = 7, ///< Used for vehicle var 0xFE bit 8 (toggled each time the train is reversed, accurate for first vehicle only).
 	VRF_TRAIN_STUCK                   = 8, ///< Train can't get a path reservation.
 	VRF_LEAVING_STATION               = 9, ///< Train is just leaving a station.
+	VRF_SEEN_TRAIN                    = 10, ///< Train is already seen when iterating.
 };
 
 /** Modes for ignoring signals. */
@@ -88,6 +90,9 @@ struct Train FINAL : public GroundVehicle<Train, VEH_TRAIN> {
 
 	/* Link between the two ends of a multiheaded engine */
 	Train *other_multiheaded_part;
+
+	Train *blocked_by;
+	PBSTileInfo blocked_at;
 
 	uint16 crash_anim_pos; ///< Crash animation counter.
 
