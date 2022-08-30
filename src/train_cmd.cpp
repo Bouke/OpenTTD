@@ -3793,6 +3793,7 @@ static bool IsGridlocked(Train *t) {
 	if (t->blocked_by == nullptr)
 		return false;
 
+	Debug(misc, 0, "Determining gridlock for {}", t->index);
 	for (Vehicle *v2 : Vehicle::Iterate())
 	{
 		if (v2->type == VEH_TRAIN)
@@ -3802,19 +3803,30 @@ static bool IsGridlocked(Train *t) {
 		}
 	}
 
-	// iterate all trains to see if we're blocking ourself
+	// we're gridlocked if there's a blocking chain leading back to us
 	for (Train *t2 = t->blocked_by; t2 != nullptr; t2 = t2->blocked_by)
 	{
-		if (HasBit(t2->flags, VRF_SEEN_TRAIN))
-			continue;
+		Debug(misc, 0, " - blocked by {}", t2->index);
+
+		// there's a gridlock, but we're not in it
+		if (HasBit(t2->flags, VRF_SEEN_TRAIN)) {
+			Debug(misc, 0, " - not a gridlock: there's an upstream gridlock");
+			return false;
+		}
 
 		SetBit(t2->flags, VRF_SEEN_TRAIN);
 
-		if (!HasBit(t2->flags, VRF_TRAIN_STUCK))
-			continue;
+		// we only consider stuck trains, otherwise it's 'normal' congestion
+		if (!HasBit(t2->flags, VRF_TRAIN_STUCK)) {
+			Debug(misc, 0, " - not a gridlock: train not stuck");
+			break;
+		}
 
-		if (t->index == t2->index)
+		// a-ha a gridlock!
+		if (t->index == t2->index) {
+			Debug(misc, 0, " - found gridlock");
 			return true;
+		}
 	}
 
 	return false;
