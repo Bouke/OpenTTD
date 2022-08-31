@@ -2343,7 +2343,14 @@ static PBSTileInfo ExtendTrainReservation(const Train *v, TrackBits *new_tracks,
 
 	TileIndex tile = origin.tile;
 	Trackdir  cur_td = origin.trackdir;
+
+	TileIndex conflict_tile = INVALID_TILE;
+	TrackdirBits conflict_td_bits = INVALID_TRACKDIR_BIT;
+
 	while (ft.Follow(tile, cur_td)) {
+		conflict_tile = ft.m_new_tile;
+		conflict_td_bits = ft.m_new_td_bits;
+
 		if (KillFirstBit(ft.m_new_td_bits) == TRACKDIR_BIT_NONE) {
 			/* Possible signal tile. */
 			if (HasOnewaySignalBlockingTrackdir(ft.m_new_tile, FindFirstTrackdir(ft.m_new_td_bits))) break;
@@ -2372,14 +2379,14 @@ static PBSTileInfo ExtendTrainReservation(const Train *v, TrackBits *new_tracks,
 			/* Choice found, path valid but not okay. Save info about the choice tile as well. */
 			if (new_tracks != nullptr) *new_tracks = TrackdirBitsToTrackBits(ft.m_new_td_bits);
 			if (enterdir != nullptr) *enterdir = ft.m_exitdir;
-			return PBSTileInfo(ft.m_new_tile, ft.m_old_td, ft.m_new_tile, ft.m_old_td);
+			return PBSTileInfo(ft.m_new_tile, ft.m_old_td, conflict_tile, conflict_td_bits);
 		}
 
 		tile = ft.m_new_tile;
 		cur_td = FindFirstTrackdir(ft.m_new_td_bits);
 
 		if (IsSafeWaitingPosition(v, tile, cur_td, true, _settings_game.pf.forbid_90_deg)) {
-			bool wp_free = IsWaitingPositionFree(v, tile, cur_td, _settings_game.pf.forbid_90_deg);
+			bool wp_free = IsWaitingPositionFree(v, tile, cur_td, _settings_game.pf.forbid_90_deg, &conflict_tile, &conflict_td_bits);
 			if (!(wp_free && TryReserveRailTrack(tile, TrackdirToTrack(cur_td)))) break;
 			/* Safe position is all good, path valid and okay. */
 			return PBSTileInfo(tile, cur_td);
@@ -2394,7 +2401,6 @@ static PBSTileInfo ExtendTrainReservation(const Train *v, TrackBits *new_tracks,
 	}
 
 	/* Sorry, can't reserve path, back out. */
-	PBSTileInfo result = PBSTileInfo(INVALID_TILE, INVALID_TRACKDIR, ft.m_new_tile, cur_td);
 	tile = origin.tile;
 	cur_td = origin.trackdir;
 	TileIndex stopped = ft.m_old_tile;
@@ -2415,7 +2421,7 @@ static PBSTileInfo ExtendTrainReservation(const Train *v, TrackBits *new_tracks,
 	}
 
 	/* Path invalid. */
-	return result;
+	return PBSTileInfo(INVALID_TILE, INVALID_TRACKDIR, conflict_tile, conflict_td_bits);
 }
 
 /**
@@ -2549,14 +2555,16 @@ static Track ChooseTrainTrack(Train *v, TileIndex tile, DiagDirection enterdir, 
 		best_track = track;
 	}
 
-	PBSTileInfo   res_dest(tile, INVALID_TRACKDIR, INVALID_TILE, INVALID_TRACKDIR);
+	PBSTileInfo   res_dest(tile, INVALID_TRACKDIR, INVALID_TILE, INVALID_TRACKDIR_BIT);
 	DiagDirection dest_enterdir = enterdir;
 	if (do_track_reservation) {
+		// ExtendTrainReservation also calls IsWaitingPositionFree, so we really
+		// need to know the signal's tile!
 		res_dest = ExtendTrainReservation(v, &tracks, &dest_enterdir);
 		if (res_dest.tile == INVALID_TILE) {
 			/* Reservation failed? */
 			v->blocked_at = res_dest.conflict_tile;
-			v->blocked_at_td = res_dest.conflict_trackdir;
+			v->blocked_at_td_bits = res_dest.conflict_td_bits;
 			if (mark_stuck)
 				MarkTrainAsStuck(v);
 			if (changed_signal) SetSignalStateByTrackdir(tile, TrackEnterdirToTrackdir(best_track, enterdir), SIGNAL_STATE_RED);
@@ -2610,10 +2618,10 @@ static Track ChooseTrainTrack(Train *v, TileIndex tile, DiagDirection enterdir, 
 
 	/* A path was found, but could not be reserved. */
 	if (res_dest.tile != INVALID_TILE && !res_dest.okay) {
-
 		// assumption that there's a train just before our waiting position,
 		// this is incomplete as the train might be un-/loading at an earlier
-		// platform. adapted from `IsWaitingPositionFree`
+		// platform. adapted from `IsWaitingPositionFree`.
+		// What's a better way to do this?
 		CFollowTrackRail ft(v, GetRailTypeInfo(v->railtype)->compatible_railtypes);
 		if (ft.Follow(res_dest.tile, res_dest.trackdir))
 		{
@@ -2623,17 +2631,17 @@ static Track ChooseTrainTrack(Train *v, TileIndex tile, DiagDirection enterdir, 
 
 			if (HasReservedTracks(ft.m_new_tile, TrackdirBitsToTrackBits(ft.m_new_td_bits))) {
 				v->blocked_at = ft.m_new_tile;
-				v->blocked_at_td = INVALID_TRACKDIR;
+				v->blocked_at_td_bits = INVALID_TRACKDIR_BIT;
 			}
 			else {
 				v->blocked_at = res_dest.conflict_tile;
-				v->blocked_at_td = res_dest.conflict_trackdir;
+				v->blocked_at_td_bits = res_dest.conflict_td_bits;
 			}
 		}
 		else
 		{
 			v->blocked_at = res_dest.conflict_tile;
-			v->blocked_at_td = res_dest.conflict_trackdir;
+			v->blocked_at_td_bits = res_dest.conflict_td_bits;
 		}
 
 		if (mark_stuck)
@@ -2655,7 +2663,7 @@ static Track ChooseTrainTrack(Train *v, TileIndex tile, DiagDirection enterdir, 
 		} else {
 			FreeTrainTrackReservation(v);
 			v->blocked_at = INVALID_TILE;
-			v->blocked_at_td = INVALID_TRACKDIR;
+			v->blocked_at_td_bits = INVALID_TRACKDIR_BIT;
 			if (mark_stuck) MarkTrainAsStuck(v);
 		}
 		return best_track;
@@ -2681,10 +2689,9 @@ static Track ChooseTrainTrack(Train *v, TileIndex tile, DiagDirection enterdir, 
 			if (cur_dest.tile != INVALID_TILE) {
 				res_dest = cur_dest;
 				if (res_dest.okay) continue;
-				/* Path found, but could not be reserved. */
-				FreeTrainTrackReservation(v);
 				v->blocked_at = res_dest.conflict_tile;
-				v->blocked_at_td = res_dest.conflict_trackdir;
+				v->blocked_at_td_bits = res_dest.conflict_td_bits;
+				FreeTrainTrackReservation(v);
 				if (mark_stuck) MarkTrainAsStuck(v);
 				if (got_reservation != nullptr) *got_reservation = false;
 				changed_signal = false;
@@ -2695,7 +2702,7 @@ static Track ChooseTrainTrack(Train *v, TileIndex tile, DiagDirection enterdir, 
 		if (!TryReserveSafeTrack(v, res_dest.tile, res_dest.trackdir, true)) {
 			FreeTrainTrackReservation(v);
 			v->blocked_at = res_dest.conflict_tile;
-			v->blocked_at_td = res_dest.conflict_trackdir;
+			v->blocked_at_td_bits = res_dest.conflict_td_bits;
 			if (mark_stuck) MarkTrainAsStuck(v);
 			if (got_reservation != nullptr) *got_reservation = false;
 			changed_signal = false;
@@ -2745,7 +2752,7 @@ bool TryPathReserve(Train *v, bool mark_as_stuck, bool first_tile_okay)
 	 * make matters worse. */
 	if (other_train != nullptr && other_train->index != v->index) {
 		v->blocked_at = origin.conflict_tile;
-		v->blocked_at_td = origin.conflict_trackdir;
+		v->blocked_at_td_bits = origin.conflict_td_bits;
 		if (mark_as_stuck) MarkTrainAsStuck(v);
 		return false;
 	}

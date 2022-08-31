@@ -93,7 +93,7 @@ struct Train FINAL : public GroundVehicle<Train, VEH_TRAIN> {
 
 	Train *blocked_by;
 	TileIndex blocked_at;
-    Trackdir blocked_at_td;
+    TrackdirBits blocked_at_td_bits;
 
     uint16 crash_anim_pos; ///< Crash animation counter.
 

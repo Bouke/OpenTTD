@@ -28,12 +28,12 @@ struct PBSTileInfo {
 	Trackdir  trackdir;  ///< The reserved trackdir on the tile.
 	bool      okay;      ///< True if tile is a safe waiting position, false otherwise.
 	TileIndex conflict_tile;
-	Trackdir conflict_trackdir;
+	TrackdirBits conflict_td_bits;
 
 	/**
 	 * Create an empty PBSTileInfo.
 	 */
-	PBSTileInfo() : tile(INVALID_TILE), trackdir(INVALID_TRACKDIR), okay(false), conflict_tile(INVALID_TILE), conflict_trackdir(INVALID_TRACKDIR) {}
+	PBSTileInfo() : tile(INVALID_TILE), trackdir(INVALID_TRACKDIR), okay(false), conflict_tile(INVALID_TILE), conflict_td_bits(INVALID_TRACKDIR_BIT) {}
 
 	/**
 	 * Create a PBSTileInfo with given tile, track direction as safe waiting position.
@@ -50,12 +50,12 @@ struct PBSTileInfo {
 	 * @param _ct The tile where the conflict lies.
 	 * @param _ctd The track dir on the conflicted tile.
 	 */
-	PBSTileInfo(TileIndex _t, Trackdir _td, TileIndex _ct, Trackdir _ctd) : tile(_t), trackdir(_td), okay(false), conflict_tile(_ct), conflict_trackdir(_ctd) {}
+	PBSTileInfo(TileIndex _t, Trackdir _td, TileIndex _ct, TrackdirBits _ctdb) : tile(_t), trackdir(_td), okay(false), conflict_tile(_ct), conflict_td_bits(_ctdb) {}
 };
 
 PBSTileInfo FollowTrainReservation(const Train *v, Vehicle **train_on_res = nullptr);
 bool IsSafeWaitingPosition(const Train *v, TileIndex tile, Trackdir trackdir, bool include_line_end, bool forbid_90deg = false);
-bool IsWaitingPositionFree(const Train *v, TileIndex tile, Trackdir trackdir, bool forbid_90deg = false);
+bool IsWaitingPositionFree(const Train *v, TileIndex tile, Trackdir trackdir, bool forbid_90deg = false, TileIndex *conflict_tile = nullptr, TrackdirBits *conflict_td_bits = nullptr);
 
 Train *GetTrainForReservation(TileIndex tile, Track track);
 
