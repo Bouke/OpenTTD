@@ -2838,14 +2838,17 @@ public:
 				str = STR_VEHICLE_STATUS_STOPPED;
 			}
 		} else if (v->type == VEH_TRAIN && HasBit(Train::From(v)->flags, VRF_TRAIN_STUCK) && !v->current_order.IsType(OT_LOADING)) {
-			str = STR_VEHICLE_STATUS_TRAIN_STUCK;
+			str = HasBit(Train::From(v)->flags, VRF_TRAIN_GRIDLOCKED) ? STR_VEHICLE_STATUS_TRAIN_GRIDLOCKED : STR_VEHICLE_STATUS_TRAIN_STUCK;
 		} else if (v->type == VEH_AIRCRAFT && HasBit(Aircraft::From(v)->flags, VAF_DEST_TOO_FAR) && !v->current_order.IsType(OT_LOADING)) {
 			str = STR_VEHICLE_STATUS_AIRCRAFT_TOO_FAR;
 		} else { // vehicle is in a "normal" state, show current order
 			if (mouse_over_start_stop) {
-				if (v->vehstatus & VS_STOPPED) {
+				if (v->vehstatus & VS_STOPPED || (v->type == VEH_TRAIN && HasBit(Train::From(v)->flags, VRF_TRAIN_GRIDLOCKED)))
+				{
 					text_colour = TC_RED | TC_FORCED;
-				} else if (v->type == VEH_TRAIN && HasBit(Train::From(v)->flags, VRF_TRAIN_STUCK) && !v->current_order.IsType(OT_LOADING)) {
+				}
+				else if (v->type == VEH_TRAIN && HasBit(Train::From(v)->flags, VRF_TRAIN_STUCK) && !v->current_order.IsType(OT_LOADING))
+				{
 					text_colour = TC_ORANGE | TC_FORCED;
 				}
 			}
@@ -2913,7 +2916,7 @@ public:
 		int text_left = r.left + (rtl ? (uint)WD_FRAMERECT_LEFT : text_offset);
 		int text_right = r.right - (rtl ? text_offset : (uint)WD_FRAMERECT_RIGHT);
 		int text_top = r.top + WD_FRAMERECT_TOP + (height - WD_FRAMERECT_TOP - WD_FRAMERECT_BOTTOM - FONT_HEIGHT_NORMAL) / 2;
-		int image = ((v->vehstatus & VS_STOPPED) != 0) ? SPR_FLAG_VEH_STOPPED : (HasBit(v->vehicle_flags, VF_PATHFINDER_LOST)) ? SPR_WARNING_SIGN : SPR_FLAG_VEH_RUNNING;
+		int image = ((v->vehstatus & VS_STOPPED) != 0) ? SPR_FLAG_VEH_STOPPED : (HasBit(v->vehicle_flags, VF_PATHFINDER_LOST) || (v->type == VEH_TRAIN && HasBit(Train::From(v)->flags, VRF_TRAIN_GRIDLOCKED))) ? SPR_WARNING_SIGN : SPR_FLAG_VEH_RUNNING;
 		int image_left = (rtl ? text_right + 1 : r.left) + WD_IMGBTN_LEFT;
 		int image_top = r.top + WD_IMGBTN_TOP + (height - WD_IMGBTN_TOP + WD_IMGBTN_BOTTOM - GetSpriteSize(image).height) / 2;
 		int lowered = this->IsWidgetLowered(WID_VV_START_STOP) ? 1 : 0;

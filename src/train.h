@@ -32,7 +32,8 @@ enum VehicleRailFlags {
 	VRF_TOGGLE_REVERSE                = 7, ///< Used for vehicle var 0xFE bit 8 (toggled each time the train is reversed, accurate for first vehicle only).
 	VRF_TRAIN_STUCK                   = 8, ///< Train can't get a path reservation.
 	VRF_LEAVING_STATION               = 9, ///< Train is just leaving a station.
-	VRF_SEEN_TRAIN                    = 10, ///< Train is already seen when iterating.
+	VRF_TRAIN_GRIDLOCKED			  = 10, ///< Train is gridlocked
+	VRF_SEEN_TRAIN                    = 11, ///< Train is already seen when iterating.
 };
 
 /** Modes for ignoring signals. */

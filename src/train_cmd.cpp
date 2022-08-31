@@ -1863,6 +1863,7 @@ void ReverseTrainDirection(Train *v)
 		/* Can't be stuck here as inside a depot is always a safe tile. */
 		if (HasBit(v->flags, VRF_TRAIN_STUCK)) SetWindowWidgetDirty(WC_VEHICLE_VIEW, v->index, WID_VV_START_STOP);
 		ClrBit(v->flags, VRF_TRAIN_STUCK);
+		ClrBit(v->flags, VRF_TRAIN_GRIDLOCKED);
 		return;
 	}
 
@@ -1892,6 +1893,7 @@ void ReverseTrainDirection(Train *v)
 	} else if (HasBit(v->flags, VRF_TRAIN_STUCK)) {
 		/* A train not inside a PBS block can't be stuck. */
 		ClrBit(v->flags, VRF_TRAIN_STUCK);
+		ClrBit(v->flags, VRF_TRAIN_GRIDLOCKED);
 		v->wait_counter = 0;
 	}
 }
@@ -2761,6 +2763,7 @@ bool TryPathReserve(Train *v, bool mark_as_stuck, bool first_tile_okay)
 		/* Can't be stuck then. */
 		if (HasBit(v->flags, VRF_TRAIN_STUCK)) SetWindowWidgetDirty(WC_VEHICLE_VIEW, v->index, WID_VV_START_STOP);
 		ClrBit(v->flags, VRF_TRAIN_STUCK);
+		ClrBit(v->flags, VRF_TRAIN_GRIDLOCKED);
 		return true;
 	}
 
@@ -2790,6 +2793,7 @@ bool TryPathReserve(Train *v, bool mark_as_stuck, bool first_tile_okay)
 		SetWindowWidgetDirty(WC_VEHICLE_VIEW, v->index, WID_VV_START_STOP);
 	}
 	ClrBit(v->flags, VRF_TRAIN_STUCK);
+	ClrBit(v->flags, VRF_TRAIN_GRIDLOCKED);
 	return true;
 }
 
@@ -3881,6 +3885,7 @@ static bool TrainLocoHandler(Train *v, bool mode)
 
 	if (v->force_proceed != TFP_NONE) {
 		ClrBit(v->flags, VRF_TRAIN_STUCK);
+		ClrBit(v->flags, VRF_TRAIN_GRIDLOCKED);
 		SetWindowWidgetDirty(WC_VEHICLE_VIEW, v->index, WID_VV_START_STOP);
 	}
 
@@ -3952,17 +3957,19 @@ static bool TrainLocoHandler(Train *v, bool mode)
 				/* Show message to player. */
 				if (_settings_client.gui.lost_vehicle_warn && v->owner == _local_company) {
 					// do we want to report gridlock earlier?
-					bool is_gridlocked = IsGridlocked(v);
+					if (IsGridlocked(v)) SetBit(v->flags, VRF_TRAIN_GRIDLOCKED);
+					else ClrBit(v->flags, VRF_TRAIN_GRIDLOCKED);
 					int num_blocked = NumBlocked(v);
 					SetDParam(0, v->index);
 					SetDParam(1, num_blocked);
-					AddVehicleAdviceNewsItem(is_gridlocked ? STR_NEWS_TRAIN_IS_STUCK_IN_GRIDLOCK : STR_NEWS_TRAIN_IS_STUCK, v->index);
+					AddVehicleAdviceNewsItem(HasBit(v->flags,VRF_TRAIN_GRIDLOCKED) ? STR_NEWS_TRAIN_IS_STUCK_IN_GRIDLOCK : STR_NEWS_TRAIN_IS_STUCK, v->index);
 				}
 				v->wait_counter = 0;
 			}
 			/* Exit if force proceed not pressed, else reset stuck flag anyway. */
 			if (v->force_proceed == TFP_NONE) return true;
 			ClrBit(v->flags, VRF_TRAIN_STUCK);
+			ClrBit(v->flags, VRF_TRAIN_GRIDLOCKED);
 			v->wait_counter = 0;
 			SetWindowWidgetDirty(WC_VEHICLE_VIEW, v->index, WID_VV_START_STOP);
 		}
