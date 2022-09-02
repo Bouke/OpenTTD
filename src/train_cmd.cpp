@@ -3817,32 +3817,22 @@ static bool IsGridlocked(Train *t) {
 
 	ResetSeen();
 
-	Debug(misc, 0, "Determining gridlock for {}", t->index);
-
 	// we're gridlocked if there's a blocking chain leading back to us
 	for (Train *t2 = t->blocked_by; t2 != nullptr; t2 = t2->blocked_by)
 	{
-		Debug(misc, 0, " - blocked by {}", t2->index);
-
-		// there's a gridlock, but we're not in it
-		if (HasBit(t2->flags, VRF_SEEN_TRAIN)) {
-			Debug(misc, 0, " - not a gridlock: there's an upstream gridlock");
-			return false;
-		}
+		// we're blocked by a gridlock
+		if (HasBit(t2->flags, VRF_SEEN_TRAIN))
+			return true;
 
 		SetBit(t2->flags, VRF_SEEN_TRAIN);
 
 		// we only consider stuck trains, otherwise it's 'normal' congestion
-		if (!HasBit(t2->flags, VRF_TRAIN_STUCK)) {
-			Debug(misc, 0, " - not a gridlock: train not stuck");
+		if (!HasBit(t2->flags, VRF_TRAIN_STUCK))
 			break;
-		}
 
-		// a-ha a gridlock!
-		if (t->index == t2->index) {
-			Debug(misc, 0, " - found gridlock");
+		// we're part of the gridlock
+		if (t->index == t2->index)
 			return true;
-		}
 	}
 
 	return false;
@@ -3953,16 +3943,23 @@ static bool TrainLocoHandler(Train *v, bool mode)
 				v->blocked_by = tcc.v;
 			}
 
+			// do we want to report gridlock earlier?
 			if (HasBit(v->flags, VRF_TRAIN_STUCK) && v->wait_counter > 2 * _settings_game.pf.wait_for_pbs_path * DAY_TICKS) {
 				/* Show message to player. */
 				if (_settings_client.gui.lost_vehicle_warn && v->owner == _local_company) {
-					// do we want to report gridlock earlier?
+					SetDParam(0, v->index);
 					if (IsGridlocked(v)) SetBit(v->flags, VRF_TRAIN_GRIDLOCKED);
 					else ClrBit(v->flags, VRF_TRAIN_GRIDLOCKED);
 					int num_blocked = NumBlocked(v);
-					SetDParam(0, v->index);
-					SetDParam(1, num_blocked);
-					AddVehicleAdviceNewsItem(HasBit(v->flags,VRF_TRAIN_GRIDLOCKED) ? STR_NEWS_TRAIN_IS_STUCK_IN_GRIDLOCK : STR_NEWS_TRAIN_IS_STUCK, v->index);
+					if (num_blocked == 0)
+					{
+						AddVehicleAdviceNewsItem(HasBit(v->flags, VRF_TRAIN_GRIDLOCKED) ? STR_NEWS_TRAIN_IS_GRIDLOCKED : STR_NEWS_TRAIN_IS_STUCK, v->index);
+					}
+					else
+					{
+						SetDParam(1, num_blocked);
+						AddVehicleAdviceNewsItem(HasBit(v->flags, VRF_TRAIN_GRIDLOCKED) ? STR_NEWS_TRAIN_IS_GRIDLOCKED_BLOCKING_OTHERS : STR_NEWS_TRAIN_IS_STUCK_BLOCKING_OTHERS, v->index);
+					}
 				}
 				v->wait_counter = 0;
 			}
