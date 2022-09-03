@@ -40,6 +40,8 @@
 
 /* Table data for key mapping. */
 #include "cocoa_keys.h"
+#import "fontcache.h"
+#import "zoom_func.h"
 
 /* The 10.12 SDK added new names for some enum constants and
  * deprecated the old ones. As there's no functional change in any
@@ -1236,6 +1238,7 @@ void CocoaDialog(const char *title, const char *message, const char *buttonLabel
 
 @implementation OTTD_CocoaWindowDelegate {
 	VideoDriver_Cocoa *driver;
+	ZoomLevel suggestedZoomLevel;
 }
 
 /** Initialize the video driver */
@@ -1243,6 +1246,7 @@ void CocoaDialog(const char *title, const char *message, const char *buttonLabel
 {
 	if (self = [ super init ]) {
 		self->driver = drv;
+		self->suggestedZoomLevel = driver->GetSuggestedUIZoom();
 	}
 	return self;
 }
@@ -1269,8 +1273,35 @@ void CocoaDialog(const char *title, const char *message, const char *buttonLabel
 /** Screen the window is on changed. */
 - (void)windowDidChangeBackingProperties:(NSNotification *)notification
 {
+	ZoomLevel newSuggestedZoomLevel = driver->GetSuggestedUIZoom();
+	if (suggestedZoomLevel != newSuggestedZoomLevel) {
+		GfxClearSpriteCache();
+		UpdateGUIZoom();
+		driver->ClearSystemSprites();
+		ClearFontCache();
+		GfxClearSpriteCache();
+
+		// Apply scaling factor to all windows so when GameSizeChanged is called
+		// from AllocateBackingStore the windows still fit within the main window.
+		int zoom_shift = suggestedZoomLevel - newSuggestedZoomLevel;
+		for (Window *w: Window::Iterate()) {
+			w->left = AdjustByZoom(w->left, zoom_shift);
+			w->top = AdjustByZoom(w->top, zoom_shift);
+			w->width = AdjustByZoom(w->width, zoom_shift);
+			w->height = AdjustByZoom(w->height, zoom_shift);
+			if (w->viewport != nullptr) {
+				w->viewport->zoom = Clamp(ZoomLevel(w->viewport->zoom - zoom_shift), _settings_client.gui.zoom_min, _settings_client.gui.zoom_max);
+			}
+		}
+	}
+
 	/* Reallocate screen buffer if necessary. */
 	driver->AllocateBackingStore();
+
+	if (suggestedZoomLevel != newSuggestedZoomLevel) {
+		ReInitAllWindows(true);
+		suggestedZoomLevel = newSuggestedZoomLevel;
+	}
 }
 
 /** Presentation options to use for fullsreen mode. */
