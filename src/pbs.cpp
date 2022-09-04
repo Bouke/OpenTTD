@@ -194,7 +194,8 @@ static PBSTileInfo FollowReservation(Owner o, RailTypes rts, TileIndex tile, Tra
 	/* Start track not reserved? This can happen if two trains
 	 * are on the same tile. The reservation on the next tile
 	 * is not ours in this case, so exit. */
-	if (!HasReservedTracks(tile, TrackToTrackBits(TrackdirToTrack(trackdir)))) return PBSTileInfo(tile, trackdir, false);
+	if (!HasReservedTracks(tile, TrackToTrackBits(TrackdirToTrack(trackdir))))
+		return PBSTileInfo(tile, trackdir, tile, TrackdirToTrackdirBits(trackdir));
 
 	/* Do not disallow 90 deg turns as the setting might have changed between reserving and now. */
 	CFollowTrackRail ft(o, rts);
@@ -246,7 +247,7 @@ static PBSTileInfo FollowReservation(Owner o, RailTypes rts, TileIndex tile, Tra
 		if (IsTileType(tile, MP_RAILWAY) && HasSignalOnTrackdir(tile, trackdir) && !IsPbsSignal(GetSignalType(tile, TrackdirToTrack(trackdir)))) break;
 	}
 
-	return PBSTileInfo(tile, trackdir, false);
+	return PBSTileInfo(tile, trackdir, tile, TrackdirToTrackdirBits(trackdir));
 }
 
 /**
@@ -293,7 +294,8 @@ PBSTileInfo FollowTrainReservation(const Train *v, Vehicle **train_on_res)
 	TileIndex tile = v->tile;
 	Trackdir  trackdir = v->GetVehicleTrackdir();
 
-	if (IsRailDepotTile(tile) && !GetDepotReservationTrackBits(tile)) return PBSTileInfo(tile, trackdir, false);
+	if (IsRailDepotTile(tile) && !GetDepotReservationTrackBits(tile))
+		return PBSTileInfo(tile, trackdir, tile, TrackdirToTrackdirBits(trackdir));
 
 	FindTrainOnTrackInfo ftoti;
 	ftoti.res = FollowReservation(v->owner, GetRailTypeInfo(v->railtype)->compatible_railtypes, tile, trackdir);
@@ -424,10 +426,15 @@ bool IsSafeWaitingPosition(const Train *v, TileIndex tile, Trackdir trackdir, bo
  * @param forbid_90deg Don't allow trains to make 90 degree turns
  * @return True if the position is free
  */
-bool IsWaitingPositionFree(const Train *v, TileIndex tile, Trackdir trackdir, bool forbid_90deg)
+bool IsWaitingPositionFree(const Train *v, TileIndex tile, Trackdir trackdir, bool forbid_90deg, TileIndex *conflict_tile, TrackdirBits *conflict_td_bits)
 {
 	Track     track = TrackdirToTrack(trackdir);
 	TrackBits reserved = GetReservedTrackbits(tile);
+
+	if (conflict_tile != nullptr)
+		*conflict_tile = tile;
+	if (conflict_td_bits != nullptr)
+		*conflict_td_bits = TrackdirToTrackdirBits(trackdir);
 
 	/* Tile reserved? Can never be a free waiting position. */
 	if (TrackOverlapsTracks(reserved, track)) return false;
@@ -440,6 +447,11 @@ bool IsWaitingPositionFree(const Train *v, TileIndex tile, Trackdir trackdir, bo
 	CFollowTrackRail ft(v, GetRailTypeInfo(v->railtype)->compatible_railtypes);
 
 	if (!ft.Follow(tile, trackdir)) return true;
+
+	if (conflict_tile != nullptr)
+		*conflict_tile = ft.m_new_tile;
+	if (conflict_td_bits != nullptr)
+		*conflict_td_bits = ft.m_new_td_bits;
 
 	/* Check for reachable tracks. */
 	ft.m_new_td_bits &= DiagdirReachesTrackdirs(ft.m_exitdir);

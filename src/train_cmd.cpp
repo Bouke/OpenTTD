@@ -1863,6 +1863,7 @@ void ReverseTrainDirection(Train *v)
 		/* Can't be stuck here as inside a depot is always a safe tile. */
 		if (HasBit(v->flags, VRF_TRAIN_STUCK)) SetWindowWidgetDirty(WC_VEHICLE_VIEW, v->index, WID_VV_START_STOP);
 		ClrBit(v->flags, VRF_TRAIN_STUCK);
+		ClrBit(v->flags, VRF_TRAIN_GRIDLOCKED);
 		return;
 	}
 
@@ -1892,6 +1893,7 @@ void ReverseTrainDirection(Train *v)
 	} else if (HasBit(v->flags, VRF_TRAIN_STUCK)) {
 		/* A train not inside a PBS block can't be stuck. */
 		ClrBit(v->flags, VRF_TRAIN_STUCK);
+		ClrBit(v->flags, VRF_TRAIN_GRIDLOCKED);
 		v->wait_counter = 0;
 	}
 }
@@ -2343,7 +2345,14 @@ static PBSTileInfo ExtendTrainReservation(const Train *v, TrackBits *new_tracks,
 
 	TileIndex tile = origin.tile;
 	Trackdir  cur_td = origin.trackdir;
+
+	TileIndex conflict_tile = INVALID_TILE;
+	TrackdirBits conflict_td_bits = INVALID_TRACKDIR_BIT;
+
 	while (ft.Follow(tile, cur_td)) {
+		conflict_tile = ft.m_new_tile;
+		conflict_td_bits = ft.m_new_td_bits;
+
 		if (KillFirstBit(ft.m_new_td_bits) == TRACKDIR_BIT_NONE) {
 			/* Possible signal tile. */
 			if (HasOnewaySignalBlockingTrackdir(ft.m_new_tile, FindFirstTrackdir(ft.m_new_td_bits))) break;
@@ -2372,17 +2381,17 @@ static PBSTileInfo ExtendTrainReservation(const Train *v, TrackBits *new_tracks,
 			/* Choice found, path valid but not okay. Save info about the choice tile as well. */
 			if (new_tracks != nullptr) *new_tracks = TrackdirBitsToTrackBits(ft.m_new_td_bits);
 			if (enterdir != nullptr) *enterdir = ft.m_exitdir;
-			return PBSTileInfo(ft.m_new_tile, ft.m_old_td, false);
+			return PBSTileInfo(ft.m_new_tile, ft.m_old_td, conflict_tile, conflict_td_bits);
 		}
 
 		tile = ft.m_new_tile;
 		cur_td = FindFirstTrackdir(ft.m_new_td_bits);
 
 		if (IsSafeWaitingPosition(v, tile, cur_td, true, _settings_game.pf.forbid_90_deg)) {
-			bool wp_free = IsWaitingPositionFree(v, tile, cur_td, _settings_game.pf.forbid_90_deg);
+			bool wp_free = IsWaitingPositionFree(v, tile, cur_td, _settings_game.pf.forbid_90_deg, &conflict_tile, &conflict_td_bits);
 			if (!(wp_free && TryReserveRailTrack(tile, TrackdirToTrack(cur_td)))) break;
 			/* Safe position is all good, path valid and okay. */
-			return PBSTileInfo(tile, cur_td, true);
+			return PBSTileInfo(tile, cur_td);
 		}
 
 		if (!TryReserveRailTrack(tile, TrackdirToTrack(cur_td))) break;
@@ -2390,7 +2399,7 @@ static PBSTileInfo ExtendTrainReservation(const Train *v, TrackBits *new_tracks,
 
 	if (ft.m_err == CFollowTrackRail::EC_OWNER || ft.m_err == CFollowTrackRail::EC_NO_WAY) {
 		/* End of line, path valid and okay. */
-		return PBSTileInfo(ft.m_old_tile, ft.m_old_td, true);
+		return PBSTileInfo(ft.m_old_tile, ft.m_old_td);
 	}
 
 	/* Sorry, can't reserve path, back out. */
@@ -2414,7 +2423,7 @@ static PBSTileInfo ExtendTrainReservation(const Train *v, TrackBits *new_tracks,
 	}
 
 	/* Path invalid. */
-	return PBSTileInfo();
+	return PBSTileInfo(INVALID_TILE, INVALID_TRACKDIR, conflict_tile, conflict_td_bits);
 }
 
 /**
@@ -2548,13 +2557,18 @@ static Track ChooseTrainTrack(Train *v, TileIndex tile, DiagDirection enterdir, 
 		best_track = track;
 	}
 
-	PBSTileInfo   res_dest(tile, INVALID_TRACKDIR, false);
+	PBSTileInfo   res_dest(tile, INVALID_TRACKDIR, INVALID_TILE, INVALID_TRACKDIR_BIT);
 	DiagDirection dest_enterdir = enterdir;
 	if (do_track_reservation) {
+		// ExtendTrainReservation also calls IsWaitingPositionFree, so we really
+		// need to know the signal's tile!
 		res_dest = ExtendTrainReservation(v, &tracks, &dest_enterdir);
 		if (res_dest.tile == INVALID_TILE) {
 			/* Reservation failed? */
-			if (mark_stuck) MarkTrainAsStuck(v);
+			v->blocked_at = res_dest.conflict_tile;
+			v->blocked_at_td_bits = res_dest.conflict_td_bits;
+			if (mark_stuck)
+				MarkTrainAsStuck(v);
 			if (changed_signal) SetSignalStateByTrackdir(tile, TrackEnterdirToTrackdir(best_track, enterdir), SIGNAL_STATE_RED);
 			return FindFirstTrack(tracks);
 		}
@@ -2606,7 +2620,34 @@ static Track ChooseTrainTrack(Train *v, TileIndex tile, DiagDirection enterdir, 
 
 	/* A path was found, but could not be reserved. */
 	if (res_dest.tile != INVALID_TILE && !res_dest.okay) {
-		if (mark_stuck) MarkTrainAsStuck(v);
+		// assumption that there's a train just before our waiting position,
+		// this is incomplete as the train might be un-/loading at an earlier
+		// platform. adapted from `IsWaitingPositionFree`.
+		// What's a better way to do this?
+		CFollowTrackRail ft(v, GetRailTypeInfo(v->railtype)->compatible_railtypes);
+		if (ft.Follow(res_dest.tile, res_dest.trackdir))
+		{
+			ft.m_new_td_bits &= DiagdirReachesTrackdirs(ft.m_exitdir);
+			if (Rail90DegTurnDisallowed(GetTileRailType(ft.m_old_tile), GetTileRailType(ft.m_new_tile)))
+				ft.m_new_td_bits &= ~TrackdirCrossesTrackdirs(res_dest.trackdir);
+
+			if (HasReservedTracks(ft.m_new_tile, TrackdirBitsToTrackBits(ft.m_new_td_bits))) {
+				v->blocked_at = ft.m_new_tile;
+				v->blocked_at_td_bits = INVALID_TRACKDIR_BIT;
+			}
+			else {
+				v->blocked_at = res_dest.conflict_tile;
+				v->blocked_at_td_bits = res_dest.conflict_td_bits;
+			}
+		}
+		else
+		{
+			v->blocked_at = res_dest.conflict_tile;
+			v->blocked_at_td_bits = res_dest.conflict_td_bits;
+		}
+
+		if (mark_stuck)
+			MarkTrainAsStuck(v);
 		FreeTrainTrackReservation(v);
 		return best_track;
 	}
@@ -2623,6 +2664,8 @@ static Track ChooseTrainTrack(Train *v, TileIndex tile, DiagDirection enterdir, 
 			if (changed_signal) MarkTileDirtyByTile(tile);
 		} else {
 			FreeTrainTrackReservation(v);
+			v->blocked_at = INVALID_TILE;
+			v->blocked_at_td_bits = INVALID_TRACKDIR_BIT;
 			if (mark_stuck) MarkTrainAsStuck(v);
 		}
 		return best_track;
@@ -2648,7 +2691,8 @@ static Track ChooseTrainTrack(Train *v, TileIndex tile, DiagDirection enterdir, 
 			if (cur_dest.tile != INVALID_TILE) {
 				res_dest = cur_dest;
 				if (res_dest.okay) continue;
-				/* Path found, but could not be reserved. */
+				v->blocked_at = res_dest.conflict_tile;
+				v->blocked_at_td_bits = res_dest.conflict_td_bits;
 				FreeTrainTrackReservation(v);
 				if (mark_stuck) MarkTrainAsStuck(v);
 				if (got_reservation != nullptr) *got_reservation = false;
@@ -2659,6 +2703,8 @@ static Track ChooseTrainTrack(Train *v, TileIndex tile, DiagDirection enterdir, 
 		/* No order or no safe position found, try any position. */
 		if (!TryReserveSafeTrack(v, res_dest.tile, res_dest.trackdir, true)) {
 			FreeTrainTrackReservation(v);
+			v->blocked_at = res_dest.conflict_tile;
+			v->blocked_at_td_bits = res_dest.conflict_td_bits;
 			if (mark_stuck) MarkTrainAsStuck(v);
 			if (got_reservation != nullptr) *got_reservation = false;
 			changed_signal = false;
@@ -2707,6 +2753,8 @@ bool TryPathReserve(Train *v, bool mark_as_stuck, bool first_tile_okay)
 	 * Exit here as doing any further reservations will probably just
 	 * make matters worse. */
 	if (other_train != nullptr && other_train->index != v->index) {
+		v->blocked_at = origin.conflict_tile;
+		v->blocked_at_td_bits = origin.conflict_td_bits;
 		if (mark_as_stuck) MarkTrainAsStuck(v);
 		return false;
 	}
@@ -2715,6 +2763,7 @@ bool TryPathReserve(Train *v, bool mark_as_stuck, bool first_tile_okay)
 		/* Can't be stuck then. */
 		if (HasBit(v->flags, VRF_TRAIN_STUCK)) SetWindowWidgetDirty(WC_VEHICLE_VIEW, v->index, WID_VV_START_STOP);
 		ClrBit(v->flags, VRF_TRAIN_STUCK);
+		ClrBit(v->flags, VRF_TRAIN_GRIDLOCKED);
 		return true;
 	}
 
@@ -2744,6 +2793,7 @@ bool TryPathReserve(Train *v, bool mark_as_stuck, bool first_tile_okay)
 		SetWindowWidgetDirty(WC_VEHICLE_VIEW, v->index, WID_VV_START_STOP);
 	}
 	ClrBit(v->flags, VRF_TRAIN_STUCK);
+	ClrBit(v->flags, VRF_TRAIN_GRIDLOCKED);
 	return true;
 }
 
@@ -3738,6 +3788,83 @@ static bool TrainCheckIfLineEnds(Train *v, bool reverse)
 	return true;
 }
 
+static Vehicle *FindTrainOnTile(Vehicle *v, void *data)
+{
+	TrainCollideChecker *tcc = (TrainCollideChecker *)data;
+
+	if (v->type != VEH_TRAIN)
+		return nullptr;
+
+	tcc->v = Train::From(v)->First();
+
+	return v;
+}
+
+static void ResetSeen() {
+	for (Vehicle *v2 : Vehicle::Iterate())
+	{
+		if (v2->type == VEH_TRAIN)
+		{
+			Train *t2 = Train::From(v2);
+			ClrBit(t2->flags, VRF_SEEN_TRAIN);
+		}
+	}
+}
+
+static bool IsGridlocked(Train *t) {
+	if (t->blocked_by == nullptr)
+		return false;
+
+	ResetSeen();
+
+	// we're gridlocked if there's a blocking chain leading back to us
+	for (Train *t2 = t->blocked_by; t2 != nullptr; t2 = t2->blocked_by)
+	{
+		// we're blocked by a gridlock
+		if (HasBit(t2->flags, VRF_SEEN_TRAIN))
+			return true;
+
+		SetBit(t2->flags, VRF_SEEN_TRAIN);
+
+		// we only consider stuck trains, otherwise it's 'normal' congestion
+		if (!HasBit(t2->flags, VRF_TRAIN_STUCK))
+			break;
+
+		// we're part of the gridlock
+		if (t->index == t2->index)
+			return true;
+	}
+
+	return false;
+}
+
+static int DoNumBlocked(Train *t)
+{
+	int num_blocked = 0;
+	for (Vehicle *v2 : Vehicle::Iterate())
+	{
+		if (v2->type == VEH_TRAIN)
+		{
+			Train *t2 = Train::From(v2);
+
+			if (HasBit(t2->flags, VRF_SEEN_TRAIN))
+				continue;
+
+			if (HasBit(t2->flags, VRF_TRAIN_STUCK) && t2->blocked_by != nullptr && t2->blocked_by->index == t->index) {
+				SetBit(t2->flags, VRF_SEEN_TRAIN);
+				num_blocked += 1 + DoNumBlocked(t2);
+			}
+		}
+	}
+
+	return num_blocked;
+}
+
+static int NumBlocked(Train *t) {
+	ResetSeen();
+	SetBit(t->flags, VRF_SEEN_TRAIN);
+	return DoNumBlocked(t);
+}
 
 static bool TrainLocoHandler(Train *v, bool mode)
 {
@@ -3748,6 +3875,7 @@ static bool TrainLocoHandler(Train *v, bool mode)
 
 	if (v->force_proceed != TFP_NONE) {
 		ClrBit(v->flags, VRF_TRAIN_STUCK);
+		ClrBit(v->flags, VRF_TRAIN_GRIDLOCKED);
 		SetWindowWidgetDirty(WC_VEHICLE_VIEW, v->index, WID_VV_START_STOP);
 	}
 
@@ -3807,17 +3935,38 @@ static bool TrainLocoHandler(Train *v, bool mode)
 			/* Still stuck. */
 			if (turn_around) ReverseTrainDirection(v);
 
+			// Determine which train is blocking us.
+			if (HasBit(v->flags, VRF_TRAIN_STUCK)) {
+				TrainCollideChecker tcc;
+				tcc.v = nullptr;
+				FindVehicleOnPos(v->blocked_at, &tcc, FindTrainOnTile);
+				v->blocked_by = tcc.v;
+			}
+
+			// do we want to report gridlock earlier?
 			if (HasBit(v->flags, VRF_TRAIN_STUCK) && v->wait_counter > 2 * _settings_game.pf.wait_for_pbs_path * DAY_TICKS) {
 				/* Show message to player. */
 				if (_settings_client.gui.lost_vehicle_warn && v->owner == _local_company) {
 					SetDParam(0, v->index);
-					AddVehicleAdviceNewsItem(STR_NEWS_TRAIN_IS_STUCK, v->index);
+					if (IsGridlocked(v)) SetBit(v->flags, VRF_TRAIN_GRIDLOCKED);
+					else ClrBit(v->flags, VRF_TRAIN_GRIDLOCKED);
+					int num_blocked = NumBlocked(v);
+					if (num_blocked == 0)
+					{
+						AddVehicleAdviceNewsItem(HasBit(v->flags, VRF_TRAIN_GRIDLOCKED) ? STR_NEWS_TRAIN_IS_GRIDLOCKED : STR_NEWS_TRAIN_IS_STUCK, v->index);
+					}
+					else
+					{
+						SetDParam(1, num_blocked);
+						AddVehicleAdviceNewsItem(HasBit(v->flags, VRF_TRAIN_GRIDLOCKED) ? STR_NEWS_TRAIN_IS_GRIDLOCKED_BLOCKING_OTHERS : STR_NEWS_TRAIN_IS_STUCK_BLOCKING_OTHERS, v->index);
+					}
 				}
 				v->wait_counter = 0;
 			}
 			/* Exit if force proceed not pressed, else reset stuck flag anyway. */
 			if (v->force_proceed == TFP_NONE) return true;
 			ClrBit(v->flags, VRF_TRAIN_STUCK);
+			ClrBit(v->flags, VRF_TRAIN_GRIDLOCKED);
 			v->wait_counter = 0;
 			SetWindowWidgetDirty(WC_VEHICLE_VIEW, v->index, WID_VV_START_STOP);
 		}

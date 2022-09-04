@@ -154,10 +154,13 @@ public:
 			target->tile = m_res_dest;
 			target->trackdir = m_res_dest_td;
 			target->okay = false;
+			target->conflict_tile = m_res_dest;
+			target->conflict_td_bits = TrackdirToTrackdirBits(m_res_dest_td);
 		}
 
 		/* Don't bother if the target is reserved. */
-		if (!IsWaitingPositionFree(Yapf().GetVehicle(), m_res_dest, m_res_dest_td)) return false;
+		if (!IsWaitingPositionFree(Yapf().GetVehicle(), m_res_dest, m_res_dest_td, false, target != nullptr ? & target->conflict_tile : nullptr, target != nullptr ? &target->conflict_td_bits : nullptr))
+			return false;
 
 		for (Node *node = m_res_node; node->m_parent != nullptr; node = node->m_parent) {
 			node->IterateTiles(Yapf().GetVehicle(), Yapf(), *this, &CYapfReserveTrack<Types>::ReserveSingleTrack);
