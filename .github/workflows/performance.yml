@@ -25,77 +25,79 @@ jobs:
       CXX: ${{ matrix.cxxcompiler }}
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v3
+    # - name: Checkout
+    #   uses: actions/checkout@v3
 
     - name: Enable performance monitoring
       run: sudo sysctl -w kernel.perf_event_paranoid=-1
 
-    - name: Install dependencies
-      run: |
-        echo "::group::Update apt"
-        sudo apt-get update
-        echo "::endgroup::"
+    - run: perf stat -d ls /
 
-        echo "::group::Install dependencies"
-        sudo apt-get install -y --no-install-recommends \
-          liballegro4-dev \
-          libcurl4-openssl-dev \
-          libfontconfig-dev \
-          libharfbuzz-dev \
-          libicu-dev \
-          liblzma-dev \
-          liblzo2-dev \
-          ${{ matrix.libraries }} \
-          zlib1g-dev \
-          # EOF
-        echo "::endgroup::"
-      env:
-        DEBIAN_FRONTEND: noninteractive
+    # - name: Install dependencies
+    #   run: |
+    #     echo "::group::Update apt"
+    #     sudo apt-get update
+    #     echo "::endgroup::"
 
-    - name: Get OpenGFX
-      run: |
-        mkdir -p ~/.local/share/openttd/baseset
-        cd ~/.local/share/openttd/baseset
+    #     echo "::group::Install dependencies"
+    #     sudo apt-get install -y --no-install-recommends \
+    #       liballegro4-dev \
+    #       libcurl4-openssl-dev \
+    #       libfontconfig-dev \
+    #       libharfbuzz-dev \
+    #       libicu-dev \
+    #       liblzma-dev \
+    #       liblzo2-dev \
+    #       ${{ matrix.libraries }} \
+    #       zlib1g-dev \
+    #       # EOF
+    #     echo "::endgroup::"
+    #   env:
+    #     DEBIAN_FRONTEND: noninteractive
 
-        echo "::group::Download OpenGFX"
-        curl -L https://cdn.openttd.org/opengfx-releases/0.6.0/opengfx-0.6.0-all.zip -o opengfx-all.zip
-        echo "::endgroup::"
+    # - name: Get OpenGFX
+    #   run: |
+    #     mkdir -p ~/.local/share/openttd/baseset
+    #     cd ~/.local/share/openttd/baseset
 
-        echo "::group::Unpack OpenGFX"
-        unzip opengfx-all.zip
-        echo "::endgroup::"
+    #     echo "::group::Download OpenGFX"
+    #     curl -L https://cdn.openttd.org/opengfx-releases/0.6.0/opengfx-0.6.0-all.zip -o opengfx-all.zip
+    #     echo "::endgroup::"
 
-        rm -f opengfx-all.zip
+    #     echo "::group::Unpack OpenGFX"
+    #     unzip opengfx-all.zip
+    #     echo "::endgroup::"
 
-    - name: Install GCC problem matcher
-      uses: ammaraskar/gcc-problem-matcher@master
+    #     rm -f opengfx-all.zip
 
-    - name: Get savegames
-      run: |
-        curl -L https://github.com/TrueBrain/OpenTTD-performance/archive/refs/heads/main.zip -o OpenTTD-performance.zip
-        unzip OpenTTD-performance.zip
+    # - name: Install GCC problem matcher
+    #   uses: ammaraskar/gcc-problem-matcher@master
 
-    - name: Build
-      run: |
-        mkdir build
-        cd build
+    # - name: Get savegames
+    #   run: |
+    #     curl -L https://github.com/TrueBrain/OpenTTD-performance/archive/refs/heads/main.zip -o OpenTTD-performance.zip
+    #     unzip OpenTTD-performance.zip
 
-        echo "::group::CMake"
-        cmake .. \
-          -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-          # EOF
-        echo "::endgroup::"
+    # - name: Build
+    #   run: |
+    #     mkdir build
+    #     cd build
 
-        echo "::group::Build"
-        echo "Running on $(nproc) cores"
-        cmake --build . -j $(nproc)
-        echo "::endgroup::"
+    #     echo "::group::CMake"
+    #     cmake .. \
+    #       -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    #       # EOF
+    #     echo "::endgroup::"
 
-    - name: Perf
-      run: |
-        /usr/bin/time -o memory -f "%M" perf stat -x\; -o cpu.csv -r5 ./build/openttd -X -x -snull -mnull -vnull:ticks=100 -g OpenTTD-performance-main/performance-config/save/wentbourne.sav
-        echo "cpu.csv"
-        cat cpu.csv
-        echo "memory"
-        cat memory
+    #     echo "::group::Build"
+    #     echo "Running on $(nproc) cores"
+    #     cmake --build . -j $(nproc)
+    #     echo "::endgroup::"
+
+    # - name: Perf
+    #   run: |
+    #     /usr/bin/time -o memory -f "%M" perf stat -x\; -o cpu.csv -r5 ./build/openttd -X -x -snull -mnull -vnull:ticks=100 -g OpenTTD-performance-main/performance-config/save/wentbourne.sav
+    #     echo "cpu.csv"
+    #     cat cpu.csv
+    #     echo "memory"
+    #     cat memory
