@@ -28,6 +28,9 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v3
 
+    - name: Enable performance monitoring
+      run: sudo sysctl -w kernel.perf_event_paranoid=-1
+
     - name: Install dependencies
       run: |
         echo "::group::Update apt"
