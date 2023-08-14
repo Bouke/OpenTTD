@@ -1,0 +1,98 @@
+name: Performance
+
+on:
+  pull_request:
+  push:
+    branches:
+    - master
+
+jobs:
+  linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - name: Clang
+          compiler: clang
+          cxxcompiler: clang++
+          libraries: libsdl2-dev nlohmann-json3-dev
+
+    name: Linux (${{ matrix.name }})
+
+    runs-on: ubuntu-20.04
+    env:
+      CC: ${{ matrix.compiler }}
+      CXX: ${{ matrix.cxxcompiler }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Install dependencies
+      run: |
+        echo "::group::Update apt"
+        sudo apt-get update
+        echo "::endgroup::"
+
+        echo "::group::Install dependencies"
+        sudo apt-get install -y --no-install-recommends \
+          liballegro4-dev \
+          libcurl4-openssl-dev \
+          libfontconfig-dev \
+          libharfbuzz-dev \
+          libicu-dev \
+          liblzma-dev \
+          liblzo2-dev \
+          ${{ matrix.libraries }} \
+          zlib1g-dev \
+          # EOF
+        echo "::endgroup::"
+      env:
+        DEBIAN_FRONTEND: noninteractive
+
+    - name: Get OpenGFX
+      run: |
+        mkdir -p ~/.local/share/openttd/baseset
+        cd ~/.local/share/openttd/baseset
+
+        echo "::group::Download OpenGFX"
+        curl -L https://cdn.openttd.org/opengfx-releases/0.6.0/opengfx-0.6.0-all.zip -o opengfx-all.zip
+        echo "::endgroup::"
+
+        echo "::group::Unpack OpenGFX"
+        unzip opengfx-all.zip
+        echo "::endgroup::"
+
+        rm -f opengfx-all.zip
+
+    - name: Install GCC problem matcher
+      uses: ammaraskar/gcc-problem-matcher@master
+
+    - name: Get savegames
+      run: |
+        curl -L https://github.com/TrueBrain/OpenTTD-performance/archive/refs/heads/main.zip -o OpenTTD-performance.zip
+        unzip OpenTTD-performance.zip
+
+    - name: Build
+      run: |
+        mkdir build
+        cd build
+
+        echo "::group::CMake"
+        cmake .. \
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+          # EOF
+        echo "::endgroup::"
+
+        echo "::group::Build"
+        echo "Running on $(nproc) cores"
+        cmake --build . -j $(nproc)
+        echo "::endgroup::"
+
+    - name: Perf
+      run: |
+        /usr/bin/time -o memory -f "%M" perf stat -x\; -o cpu.csv -r5 ./build/openttd -X -x -snull -mnull -vnull:ticks=100 -g OpenTTD-performance-main/performance-config/save/wentbourne.sav
+        echo "cpu.csv"
+        cat cpu.csv
+        echo "memory"
+        cat memory
