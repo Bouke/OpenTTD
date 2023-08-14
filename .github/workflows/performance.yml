@@ -43,16 +43,16 @@ jobs:
     
     - name: Measure
       run: |
-      /usr/bin/time -o memory -f "user:%U;memory:%M" ./openttd-20230813-master-g61dfd74e44-linux-generic-amd64/openttd -X -x -snull -mnull -vnull:ticks=10 -g OpenTTD-performance-main/performance-config/save/wentbourne.sav
-      /usr/bin/time -o memory -f "user:%U;memory:%M" ./openttd-20230813-master-g61dfd74e44-linux-generic-amd64/openttd -X -x -snull -mnull -vnull:ticks=10 -g OpenTTD-performance-main/performance-config/save/wentbourne.sav
-      /usr/bin/time -o memory -f "user:%U;memory:%M" ./openttd-20230813-master-g61dfd74e44-linux-generic-amd64/openttd -X -x -snull -mnull -vnull:ticks=10 -g OpenTTD-performance-main/performance-config/save/wentbourne.sav
-      /usr/bin/time -o memory -f "user:%U;memory:%M" ./openttd-20230813-master-g61dfd74e44-linux-generic-amd64/openttd -X -x -snull -mnull -vnull:ticks=10 -g OpenTTD-performance-main/performance-config/save/wentbourne.sav
-      /usr/bin/time -o memory -f "user:%U;memory:%M" ./openttd-20230813-master-g61dfd74e44-linux-generic-amd64/openttd -X -x -snull -mnull -vnull:ticks=10 -g OpenTTD-performance-main/performance-config/save/wentbourne.sav
-      /usr/bin/time -o memory -f "user:%U;memory:%M" ./openttd-20230813-master-g61dfd74e44-linux-generic-amd64/openttd -X -x -snull -mnull -vnull:ticks=50 -g OpenTTD-performance-main/performance-config/save/wentbourne.sav
-      /usr/bin/time -o memory -f "user:%U;memory:%M" ./openttd-20230813-master-g61dfd74e44-linux-generic-amd64/openttd -X -x -snull -mnull -vnull:ticks=50 -g OpenTTD-performance-main/performance-config/save/wentbourne.sav
-      /usr/bin/time -o memory -f "user:%U;memory:%M" ./openttd-20230813-master-g61dfd74e44-linux-generic-amd64/openttd -X -x -snull -mnull -vnull:ticks=50 -g OpenTTD-performance-main/performance-config/save/wentbourne.sav
-      /usr/bin/time -o memory -f "user:%U;memory:%M" ./openttd-20230813-master-g61dfd74e44-linux-generic-amd64/openttd -X -x -snull -mnull -vnull:ticks=50 -g OpenTTD-performance-main/performance-config/save/wentbourne.sav
-      /usr/bin/time -o memory -f "user:%U;memory:%M" ./openttd-20230813-master-g61dfd74e44-linux-generic-amd64/openttd -X -x -snull -mnull -vnull:ticks=50 -g OpenTTD-performance-main/performance-config/save/wentbourne.sav
+        /usr/bin/time -o memory -f "user:%U;memory:%M" ./openttd-20230813-master-g61dfd74e44-linux-generic-amd64/openttd -X -x -snull -mnull -vnull:ticks=10 -g OpenTTD-performance-main/performance-config/save/wentbourne.sav
+        /usr/bin/time -o memory -f "user:%U;memory:%M" ./openttd-20230813-master-g61dfd74e44-linux-generic-amd64/openttd -X -x -snull -mnull -vnull:ticks=10 -g OpenTTD-performance-main/performance-config/save/wentbourne.sav
+        /usr/bin/time -o memory -f "user:%U;memory:%M" ./openttd-20230813-master-g61dfd74e44-linux-generic-amd64/openttd -X -x -snull -mnull -vnull:ticks=10 -g OpenTTD-performance-main/performance-config/save/wentbourne.sav
+        /usr/bin/time -o memory -f "user:%U;memory:%M" ./openttd-20230813-master-g61dfd74e44-linux-generic-amd64/openttd -X -x -snull -mnull -vnull:ticks=10 -g OpenTTD-performance-main/performance-config/save/wentbourne.sav
+        /usr/bin/time -o memory -f "user:%U;memory:%M" ./openttd-20230813-master-g61dfd74e44-linux-generic-amd64/openttd -X -x -snull -mnull -vnull:ticks=10 -g OpenTTD-performance-main/performance-config/save/wentbourne.sav
+        /usr/bin/time -o memory -f "user:%U;memory:%M" ./openttd-20230813-master-g61dfd74e44-linux-generic-amd64/openttd -X -x -snull -mnull -vnull:ticks=50 -g OpenTTD-performance-main/performance-config/save/wentbourne.sav
+        /usr/bin/time -o memory -f "user:%U;memory:%M" ./openttd-20230813-master-g61dfd74e44-linux-generic-amd64/openttd -X -x -snull -mnull -vnull:ticks=50 -g OpenTTD-performance-main/performance-config/save/wentbourne.sav
+        /usr/bin/time -o memory -f "user:%U;memory:%M" ./openttd-20230813-master-g61dfd74e44-linux-generic-amd64/openttd -X -x -snull -mnull -vnull:ticks=50 -g OpenTTD-performance-main/performance-config/save/wentbourne.sav
+        /usr/bin/time -o memory -f "user:%U;memory:%M" ./openttd-20230813-master-g61dfd74e44-linux-generic-amd64/openttd -X -x -snull -mnull -vnull:ticks=50 -g OpenTTD-performance-main/performance-config/save/wentbourne.sav
+        /usr/bin/time -o memory -f "user:%U;memory:%M" ./openttd-20230813-master-g61dfd74e44-linux-generic-amd64/openttd -X -x -snull -mnull -vnull:ticks=50 -g OpenTTD-performance-main/performance-config/save/wentbourne.sav
 
     # - run: perf stat -d ls /
 
