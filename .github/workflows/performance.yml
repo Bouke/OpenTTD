@@ -31,6 +31,21 @@ jobs:
     - name: Enable performance monitoring
       run: sudo sysctl -w kernel.perf_event_paranoid=-1
 
+    - name: Get OpenGFX
+      run: |
+        mkdir -p ~/.local/share/openttd/baseset
+        cd ~/.local/share/openttd/baseset
+
+        echo "::group::Download OpenGFX"
+        curl -L https://cdn.openttd.org/opengfx-releases/0.6.0/opengfx-0.6.0-all.zip -o opengfx-all.zip
+        echo "::endgroup::"
+
+        echo "::group::Unpack OpenGFX"
+        unzip opengfx-all.zip
+        echo "::endgroup::"
+
+        rm -f opengfx-all.zip
+
     - name: Get savegames
       run: |
         curl -L https://github.com/TrueBrain/OpenTTD-performance/archive/refs/heads/main.zip -o OpenTTD-performance.zip
